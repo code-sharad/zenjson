@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import { 
   Braces, 
   Copy, 
@@ -15,18 +17,17 @@ import {
   Menu,
   Save
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
-import JsonEditor from './components/JsonEditor';
-import JsonViewer from './components/JsonViewer';
-import Button from './components/Button';
-import HistorySidebar from './components/HistorySidebar';
-import Toast, { ToastType } from './components/Toast';
-import { validateJson, formatJson, minifyJson } from './utils/jsonUtils';
-import { fixJsonWithAI, generateSampleJson } from './services/geminiService';
-import { ViewMode, JsonError, HistoryItem, HistoryActionType } from './types';
+import JsonEditor from '../components/JsonEditor';
+import JsonViewer from '../components/JsonViewer';
+import Button from '../components/Button';
+import HistorySidebar from '../components/HistorySidebar';
+import { validateJson, formatJson, minifyJson } from '../utils/jsonUtils';
+import { fixJsonWithAI, generateSampleJson } from '../services/geminiService';
+import { ViewMode, JsonError, HistoryItem, HistoryActionType } from '../types';
 
-const App: React.FC = () => {
+export default function Home() {
   const [input, setInput] = useState<string>('');
   const [output, setOutput] = useState<string>('');
   const [parsed, setParsed] = useState<any>(undefined);
@@ -34,14 +35,8 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.CODE);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [toast, setToast] = useState<{ message: string; type: ToastType; visible: boolean }>({
-    message: '',
-    type: 'success',
-    visible: false
-  });
 
   // Load history from local storage on mount
   useEffect(() => {
@@ -55,9 +50,10 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const showToast = (message: string, type: ToastType = 'success') => {
-    setToast({ message, type, visible: true });
-  };
+  // Save history when it changes
+  useEffect(() => {
+    localStorage.setItem('zenjson_history', JSON.stringify(history));
+  }, [history]);
 
   const addToHistory = (content: string, type: HistoryActionType) => {
     if (!content.trim()) return;
@@ -71,12 +67,7 @@ const App: React.FC = () => {
       preview: content.slice(0, 150) + (content.length > 150 ? '...' : ''),
       actionType: type
     };
-    setHistory(prev => {
-      const updated = [newItem, ...prev].slice(0, 50); // Keep last 50 items
-      // Save to localStorage immediately
-      localStorage.setItem('zenjson_history', JSON.stringify(updated));
-      return updated;
-    });
+    setHistory(prev => [newItem, ...prev].slice(0, 50)); // Keep last 50 items
   };
 
   // Auto-format effect
@@ -86,12 +77,7 @@ const App: React.FC = () => {
     if (isValid) {
       setError(null);
       setParsed(parsedData);
-      // We don't auto-update output to avoid jumping while typing unless it's a specific action,
-      // but keeping the 'parsed' state fresh allows tree view to work.
-      // If we want real-time formatted preview:
       if (input.trim().length > 0) {
-        // Optional: setOutput(formatJson(parsedData)); 
-        // Better UX: Show formatted version of current valid input in output pane
         setOutput(formatJson(parsedData));
       } else {
         setOutput('');
@@ -99,41 +85,33 @@ const App: React.FC = () => {
     } else {
       setError(parseError || { message: 'Unknown error' });
       setParsed(undefined);
-      // When invalid, output remains last valid or empty? 
-      // Let's keep it empty or show error state in viewer? 
-      // Minimalist approach: Output pane shows nothing or previous valid.
     }
   }, [input]);
 
   const handleFormat = () => {
     if (!parsed) return;
     const formatted = formatJson(parsed);
-    setInput(formatted); // Update input to match
+    setInput(formatted); 
     setOutput(formatted);
     addToHistory(formatted, 'FORMAT');
-    showToast('JSON formatted successfully!', 'success');
   };
 
   const handleMinify = () => {
     if (!parsed) return;
     const minified = minifyJson(parsed);
-    setInput(minified); // Update input to match
+    setInput(minified);
     setOutput(minified);
     addToHistory(minified, 'MINIFY');
-    showToast('JSON minified successfully!', 'success');
   };
 
   const handleSave = () => {
     if (!input.trim()) return;
     addToHistory(input, 'SAVE');
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
   };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(output || input);
     setCopySuccess(true);
-    showToast('Copied to clipboard!', 'success');
     setTimeout(() => setCopySuccess(false), 2000);
   };
 
@@ -151,10 +129,8 @@ const App: React.FC = () => {
       const fixed = await fixJsonWithAI(input);
       setInput(fixed);
       addToHistory(fixed, 'AI_FIX');
-      showToast('JSON fixed with AI!', 'success');
-      // The useEffect will trigger and format it
     } catch (e) {
-      showToast('AI failed to fix JSON', 'error');
+      alert("AI failed to fix JSON.");
     } finally {
       setIsProcessing(false);
     }
@@ -167,10 +143,8 @@ const App: React.FC = () => {
       const formattedSample = formatJson(JSON.parse(sample));
       setInput(formattedSample);
       addToHistory(formattedSample, 'SAMPLE');
-      showToast('Sample JSON generated!', 'success');
     } catch (e) {
       console.error(e);
-      showToast('Failed to generate sample', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -186,10 +160,11 @@ const App: React.FC = () => {
         const imported = JSON.parse(event.target?.result as string);
         if (Array.isArray(imported)) {
           setHistory(imported);
-          localStorage.setItem('zenjson_history', JSON.stringify(imported));
+        } else {
+          alert('Invalid history file');
         }
       } catch (error) {
-        console.error('Failed to import history:', error);
+        alert('Failed to parse import file');
       }
     };
     reader.readAsText(file);
@@ -198,7 +173,6 @@ const App: React.FC = () => {
   };
 
   const handleHistoryExport = () => {
-    if (history.length === 0) return;
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(history));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
@@ -210,13 +184,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen w-full bg-background text-text">
-      <Toast 
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.visible}
-        onClose={() => setToast(prev => ({ ...prev, visible: false }))}
-      />
-      
       <HistorySidebar 
         isOpen={historyOpen} 
         onClose={() => setHistoryOpen(false)}
@@ -225,19 +192,10 @@ const App: React.FC = () => {
           setInput(item.content);
           setHistoryOpen(false);
         }}
-        onClear={() => {
-          setHistory([]);
-          localStorage.setItem('zenjson_history', JSON.stringify([]));
-        }}
+        onClear={() => setHistory([])}
         onImport={handleHistoryImport}
         onExport={handleHistoryExport}
-        onDelete={(id) => {
-          setHistory(prev => {
-            const updated = prev.filter(i => i.id !== id);
-            localStorage.setItem('zenjson_history', JSON.stringify(updated));
-            return updated;
-          });
-        }}
+        onDelete={(id) => setHistory(prev => prev.filter(i => i.id !== id))}
       />
 
       {/* Header */}
@@ -314,18 +272,8 @@ const App: React.FC = () => {
             </button>
           </div>
           
-          <Button 
-            variant={saveSuccess ? 'success' : 'ghost'}
-            size="sm" 
-            onClick={handleSave} 
-            disabled={!input} 
-            icon={saveSuccess ? <Check size={14} /> : <Save size={14} />}
-            className={`relative ${saveSuccess ? 'bg-success hover:bg-success text-white' : ''}`}
-          >
-            {saveSuccess ? 'Saved' : 'Save'}
-            {input && !error && !saveSuccess && (
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full animate-pulse"></span>
-            )}
+          <Button variant="ghost" size="sm" onClick={handleSave} disabled={!input} icon={<Save size={14} />}>
+            Save
           </Button>
 
           <Button variant="ghost" size="sm" onClick={handleClear} icon={<Trash2 size={14} />}>
@@ -395,13 +343,11 @@ const App: React.FC = () => {
            {parsed && `Size: ${new Blob([JSON.stringify(parsed)]).size} bytes`}
         </div>
         <div className="flex gap-4">
-           <span>React 19</span>
+           <span>Next.js 14</span>
            <span>Tailwind</span>
            <span>Gemini 2.5</span>
         </div>
       </footer>
     </div>
   );
-};
-
-export default App;
+}

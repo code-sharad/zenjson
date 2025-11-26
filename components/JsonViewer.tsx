@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { tokenizeJson } from '../utils/jsonUtils';
 import { JsonValue } from '../types';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, Braces } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface JsonViewerProps {
@@ -15,7 +15,7 @@ const HighlightedCode: React.FC<{ code: string }> = ({ code }) => {
   const tokens = useMemo(() => tokenizeJson(code), [code]);
 
   return (
-    <pre className="font-mono text-sm leading-6 whitespace-pre-wrap break-all">
+    <pre className="font-mono text-sm leading-6 whitespace-pre-wrap break-all p-2">
       {tokens.map((token, i) => {
         let className = 'text-text';
         switch (token.type) {
@@ -28,9 +28,6 @@ const HighlightedCode: React.FC<{ code: string }> = ({ code }) => {
           default: className = 'text-text';
         }
         
-        // Handle key specially to remove quotes for visual cleanliness if desired, 
-        // but for valid JSON view we keep them. 
-        // We just style them differently.
         return <span key={i} className={className}>{token.value}</span>;
       })}
     </pre>
@@ -38,7 +35,7 @@ const HighlightedCode: React.FC<{ code: string }> = ({ code }) => {
 };
 
 // Sub-component for Tree View Item
-const TreeItem: React.FC<{ name?: string; value: JsonValue; depth?: number }> = ({ name, value, depth = 0 }) => {
+const TreeItem: React.FC<{ name?: string; value: JsonValue; depth?: number; isLast?: boolean }> = ({ name, value, depth = 0, isLast = true }) => {
   const [isOpen, setIsOpen] = React.useState(true);
   const isObject = value !== null && typeof value === 'object' && !Array.isArray(value);
   const isArray = Array.isArray(value);
@@ -50,19 +47,33 @@ const TreeItem: React.FC<{ name?: string; value: JsonValue; depth?: number }> = 
       return String(val);
   };
 
-  const toggle = () => setIsOpen(!isOpen);
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(!isOpen);
+  };
 
   return (
-    <div className="font-mono text-sm" style={{ marginLeft: depth * 16 }}>
-      <div className="flex items-start hover:bg-white/5 rounded px-1 py-0.5 cursor-pointer select-none" onClick={isExpandable ? toggle : undefined}>
-        <div className="w-4 h-4 mr-1 mt-1 flex items-center justify-center text-muted">
-          {isExpandable && (
-            isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />
+    <div className="font-mono text-sm relative">
+      <div 
+        className={`flex items-start group rounded-md pl-1 py-0.5 transition-colors ${isExpandable ? 'cursor-pointer hover:bg-white/5' : ''}`} 
+        onClick={isExpandable ? toggle : undefined}
+      >
+        <div className="w-5 h-5 flex items-center justify-center text-muted/50 group-hover:text-muted transition-colors mr-0.5 shrink-0">
+          {isExpandable ? (
+            <motion.div
+              initial={false}
+              animate={{ rotate: isOpen ? 90 : 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ChevronRight size={14} />
+            </motion.div>
+          ) : (
+             <div className="w-1.5 h-1.5 rounded-full bg-border/50" />
           )}
         </div>
         
-        <div className="flex-1 break-all">
-          {name && <span className="text-[#7ee787] mr-1">"{name}":</span>}
+        <div className="flex-1 break-all leading-5">
+          {name && <span className="text-[#7ee787] mr-1.5 opacity-90">{name}<span className="text-muted/60">:</span></span>}
           
           {!isExpandable ? (
             <span className={
@@ -73,26 +84,41 @@ const TreeItem: React.FC<{ name?: string; value: JsonValue; depth?: number }> = 
               {typeof value === 'string' ? `"${value}"` : String(value)}
             </span>
           ) : (
-            <span className="text-muted text-xs italic ml-1 select-none">
-                {getPreview(value)}
-            </span>
+            <>
+              <span className="text-muted/60 text-xs italic select-none bg-surface/80 px-1.5 rounded-full border border-white/5">
+                  {isArray ? 'Array' : 'Object'} {isOpen ? '' : getPreview(value)}
+              </span>
+            </>
           )}
         </div>
       </div>
       
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {isExpandable && isOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+            className="overflow-hidden pl-5 relative border-l border-border/20 ml-2.5"
           >
-            {isObject && Object.entries(value as object).map(([k, v]) => (
-                <TreeItem key={k} name={k} value={v} depth={1} />
+            {isObject && Object.entries(value as object).map(([k, v], idx, arr) => (
+                <TreeItem 
+                    key={k} 
+                    name={k} 
+                    value={v} 
+                    depth={depth + 1} 
+                    isLast={idx === arr.length - 1} 
+                />
             ))}
-            {isArray && (value as any[]).map((v, i) => (
-                <TreeItem key={i} name={String(i)} value={v} depth={1} />
+            {isArray && (value as any[]).map((v, i, arr) => (
+                <TreeItem 
+                    key={i} 
+                    name={String(i)} 
+                    value={v} 
+                    depth={depth + 1} 
+                    isLast={i === arr.length - 1}
+                />
             ))}
           </motion.div>
         )}
@@ -103,18 +129,23 @@ const TreeItem: React.FC<{ name?: string; value: JsonValue; depth?: number }> = 
 
 const JsonViewer: React.FC<JsonViewerProps> = ({ jsonString, parsedData, mode }) => {
   return (
-    <div className="h-full w-full bg-surface rounded-xl border border-border p-4 overflow-auto custom-scrollbar">
-      {mode === 'CODE' ? (
-        <HighlightedCode code={jsonString} />
-      ) : parsedData ? (
-         <div className="pt-2">
-           <TreeItem value={parsedData} />
-         </div>
-      ) : (
-        <div className="text-muted italic flex items-center justify-center h-full">
-            Valid JSON required for Tree View
-        </div>
-      )}
+    <div className="h-full w-full bg-surface rounded-xl border border-border overflow-hidden flex flex-col">
+       <div className="flex-1 overflow-auto p-4 custom-scrollbar">
+          {mode === 'CODE' ? (
+            <HighlightedCode code={jsonString} />
+          ) : parsedData ? (
+            <div className="pt-1">
+              <TreeItem value={parsedData} />
+            </div>
+          ) : (
+            <div className="text-muted italic flex items-center justify-center h-full opacity-50">
+                <div className="text-center">
+                    <Braces className="mx-auto mb-2 opacity-50" size={32} />
+                    <p>Valid JSON required for Tree View</p>
+                </div>
+            </div>
+          )}
+       </div>
     </div>
   );
 };

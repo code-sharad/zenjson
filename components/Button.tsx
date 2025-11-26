@@ -1,11 +1,12 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, HTMLMotionProps } from 'framer-motion';
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+interface ButtonProps extends Omit<HTMLMotionProps<"button">, "children"> {
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
   icon?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 const Button: React.FC<ButtonProps> = ({ 
@@ -23,7 +24,8 @@ const Button: React.FC<ButtonProps> = ({
     primary: "bg-primary text-white hover:bg-primaryHover focus:ring-primary",
     secondary: "bg-surface border border-border text-text hover:bg-border focus:ring-border",
     ghost: "bg-transparent hover:bg-surface text-text",
-    danger: "bg-error/10 text-error hover:bg-error/20 border border-error/20"
+    danger: "bg-error/10 text-error hover:bg-error/20 border border-error/20",
+    success: "bg-green-500 text-white hover:bg-green-600 focus:ring-green-500"
   };
 
   const sizes = {
